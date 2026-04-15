@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Flight Trainer</title>
+<style>
+body {
+    font-family: -apple-system;
+    background: #000;
+    color: #fff;
+    text-align: center;
+}
+
+button {
+    width: 80%;
+    padding: 20px;
+    margin: 10px;
+    font-size: 20px;
+    border-radius: 12px;
+}
+</style>
+</head>
+<body>
+
+<div id="menu">
+    <h1>FLIGHT TRAINER</h1>
+    <button onclick="startPhase('takeoff')">Takeoff</button>
+    <button onclick="startPhase('cruise')">Cruise</button>
+    <button onclick="startPhase('descent')">Descent</button>
+    <button onclick="startPhase('landing')">Landing</button>
+    <button onclick="startPhase('final')">Final Call</button>
+    <button onclick="showHistory()">📋 History</button>
+</div>
+
+<div id="sim" style="display:none;">
+    <h2 id="status">Flying...</h2>
+
+    <!-- 🔥 新增：立即触发 -->
+    <button onclick="triggerNow()">⚡ TRIGGER NOW</button>
+
+    <button onclick="goBack()">⬅ Back</button>
+</div>
+
+<div id="history" style="display:none;">
+    <h2>History</h2>
+    <div id="historyBox"></div>
+    <button onclick="clearHistory()">Clear</button>
+    <button onclick="goBack()">⬅ Back</button>
+</div>
+
+<script>
+let timer;
+let currentPhase = null;
+let historyLog = [];
+
+// ===== 故障 =====
+const failures = [
+    "LEFT ENGINE FAILURE",
+    "LEFT ENGINE FIRE",
+    "RIGHT ENGINE FAILURE",
+    "RIGHT ENGINE FIRE"
+];
+
+const finalCalls = [
+    "RUNWAY IN SIGHT",
+    "200 CHECK",
+    "RUNWAY NOT IN SIGHT",
+    "NO RESPONSE",
+    "UNSTABLE GO AROUND"
+];
+
+// ===== 语音 =====
+function speak(text) {
+    const voices = speechSynthesis.getVoices();
+
+    let maleVoice = voices.find(v =>
+        v.name.toLowerCase().includes("male") ||
+        v.name.toLowerCase().includes("david") ||
+        v.name.toLowerCase().includes("mark") ||
+        v.name.toLowerCase().includes("alex") ||
+        v.name.toLowerCase().includes("daniel")
+    );
+
+    if (!maleVoice) maleVoice = voices[0];
+
+    const msg = new SpeechSynthesisUtterance(text);
+    msg.voice = maleVoice;
+    msg.rate = 0.95;
+    msg.pitch = 0.85;
+
+    speechSynthesis.speak(msg);
+}
+
+speechSynthesis.onvoiceschanged = () => {
+    speechSynthesis.getVoices();
+};
+
+// ===== 启动阶段 =====
+function startPhase(phase) {
+    hideAll();
+    currentPhase = phase;
+
+    document.getElementById("sim").style.display = "block";
+    document.getElementById("status").innerText = "Flying... Stay ready";
+
+    let duration;
+
+    if (phase === "takeoff" || phase === "landing") {
+        duration = Math.random() * 120000;
+    } else if (phase === "final") {
+        duration = Math.random() * 60000;
+    } else {
+        duration = Math.random() * 300000;
+    }
+
+    timer = setTimeout(() => triggerEvent(phase), duration);
+}
+
+// ===== 手动触发 =====
+function triggerNow() {
+    clearTimeout(timer); // ❗取消原本随机触发
+    triggerEvent(currentPhase);
+}
+
+// ===== 触发事件 =====
+function triggerEvent(phase) {
+    let event;
+
+    if (phase === "final") {
+        event = finalCalls[Math.floor(Math.random() * finalCalls.length)];
+        speak(event); // 不重复
+    } else {
+        event = failures[Math.floor(Math.random() * failures.length)];
+
+        let callout = event.toLowerCase();
+        callout = callout + ", " + callout;
+        speak(callout);
+    }
+
+    document.getElementById("status").innerText = "⚠️ " + event;
+
+    let time = new Date().toLocaleTimeString();
+    historyLog.unshift(`${time} | ${phase.toUpperCase()} | ${event}`);
+}
+
+// ===== 历史 =====
+function showHistory() {
+    hideAll();
+    document.getElementById("history").style.display = "block";
+
+    let box = document.getElementById("historyBox");
+    box.innerHTML = "";
+
+    if (historyLog.length === 0) {
+        box.innerHTML = "<p>No records</p>";
+        return;
+    }
+
+    historyLog.forEach(item => {
+        let p = document.createElement("p");
+        p.textContent = item;
+        box.appendChild(p);
+    });
+}
+
+function clearHistory() {
+    historyLog = [];
+    showHistory();
+}
+
+// ===== UI =====
+function goBack() {
+    clearTimeout(timer);
+    speechSynthesis.cancel();
+    hideAll();
+    document.getElementById("menu").style.display = "block";
+}
+
+function hideAll() {
+    document.getElementById("menu").style.display = "none";
+    document.getElementById("sim").style.display = "none";
+    document.getElementById("history").style.display = "none";
+}
+</script>
+
+</body>
+</html>
