@@ -2,185 +2,422 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Flight Trainer</title>
+<title>DA42 Trainer v2.9</title>
+
 <style>
-body {
-    font-family: -apple-system;
-    background: #000;
-    color: #fff;
-    text-align: center;
+:root{
+    --font-size: 18px;
+    --button-size: 75%;
+    --bg-image: none;
 }
 
-button {
-    width: 80%;
-    padding: 20px;
-    margin: 10px;
-    font-size: 20px;
-    border-radius: 12px;
+body{
+    margin:0;
+    font-family:-apple-system;
+    background:#2f2f2f;
+    background-image: var(--bg-image);
+    background-size: cover;
+    color:white;
+    text-align:center;
+    font-size: var(--font-size);
+}
+
+.page{
+    display:none;
+    height:100vh;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+}
+
+.show{ display:flex; }
+
+button{
+    width: var(--button-size);
+    padding:16px;
+    margin:8px;
+    font-size:18px;
+    border-radius:12px;
+}
+
+#version{
+    position:fixed;
+    bottom:5px;
+    width:100%;
+    font-size:12px;
+    opacity:0.5;
 }
 </style>
 </head>
+
 <body>
 
-<div id="menu">
-    <h1>FLIGHT TRAINER</h1>
-    <button onclick="startPhase('takeoff')">Takeoff</button>
-    <button onclick="startPhase('cruise')">Cruise</button>
-    <button onclick="startPhase('descent')">Descent</button>
-    <button onclick="startPhase('landing')">Landing</button>
-    <button onclick="startPhase('final')">Final Call</button>
-    <button onclick="showHistory()">📋 History</button>
+<!-- MAIN -->
+<div id="main" class="page show">
+    <h1>DA42 TRAINER v2.9</h1>
+
+    <button onclick="go('train')">Start Training</button>
+    <button onclick="go('settings')">Settings</button>
+    <button onclick="go('history')">History</button>
 </div>
 
-<div id="sim" style="display:none;">
-    <h2 id="status">Flying...</h2>
+<!-- TRAIN -->
+<div id="train" class="page">
+    <h2>Training</h2>
 
-    <!-- 🔥 新增：立即触发 -->
-    <button onclick="triggerNow()">⚡ TRIGGER NOW</button>
+    <button onclick="go('tp')">Traffic Pattern</button>
+    <button onclick="go('xc')">Cross Country</button>
 
-    <button onclick="goBack()">⬅ Back</button>
+    <button onclick="back()">Back</button>
 </div>
 
-<div id="history" style="display:none;">
+<!-- TP -->
+<div id="tp" class="page">
+    <h2>Traffic Pattern</h2>
+
+    <input type="range" min="1" max="10" value="5"
+        oninput="setTP(this.value)">
+
+    <h3 id="tpTimer">05:00</h3>
+    <p id="tpEvent">READY</p>
+
+    <button onclick="start('TP')">Start</button>
+    <button onclick="pause()">Pause</button>
+    <button onclick="reset()">Reset</button>
+
+    <button onclick="back()">Back</button>
+</div>
+
+<!-- XC MENU -->
+<div id="xc" class="page">
+    <h2>Cross Country Flight</h2>
+
+    <button onclick="start('XC','takeoff')">Takeoff</button>
+    <button onclick="start('XC','cruise')">Cruise</button>
+    <button onclick="start('XC','descent')">Descent</button>
+    <button onclick="start('XC','landing')">Landing</button>
+    <button onclick="start('XC','final')">Final Call</button>
+
+    <button onclick="back()">Back</button>
+</div>
+
+<!-- XC SIM -->
+<div id="xcSim" class="page">
+    <h2>XC SIM</h2>
+
+    <h3 id="xcTimer">00:00</h3>
+    <p id="xcEvent">READY</p>
+
+    <button onclick="reset()">Reset</button>
+    <button onclick="back()">Back</button>
+</div>
+
+<!-- SETTINGS -->
+<div id="settings" class="page">
+    <h2>Settings</h2>
+
+    <p>Font Size</p>
+    <input type="range" min="12" max="28" value="18"
+        oninput="setFontSize(this.value)">
+
+    <p>Button Size</p>
+    <input type="range" min="50" max="100" value="75"
+        oninput="setButtonSize(this.value)">
+
+    <p>Background Image</p>
+    <input type="file" accept="image/*"
+        onchange="setBackground(this)">
+
+    <br><br>
+    <button onclick="back()">Back</button>
+</div>
+
+<!-- HISTORY -->
+<div id="history" class="page">
     <h2>History</h2>
-    <div id="historyBox"></div>
-    <button onclick="clearHistory()">Clear</button>
-    <button onclick="goBack()">⬅ Back</button>
+    <div id="log"></div>
+    <button onclick="back()">Back</button>
 </div>
+
+<div id="version">v2.9 FULL INTEGRATED</div>
 
 <script>
-let timer;
-let currentPhase = null;
-let historyLog = [];
 
-// ===== 故障 =====
-const failures = [
+/* ================= NAV ================= */
+let stack=[];
+
+function go(p){
+    let cur=document.querySelector(".page.show");
+    if(cur) stack.push(cur.id);
+
+    document.querySelectorAll(".page")
+        .forEach(x=>x.classList.remove("show"));
+
+    document.getElementById(p).classList.add("show");
+}
+
+function back(){
+    let p=stack.pop();
+    if(!p) return;
+
+    document.querySelectorAll(".page")
+        .forEach(x=>x.classList.remove("show"));
+
+    document.getElementById(p).classList.add("show");
+}
+
+/* ================= STATE ================= */
+let mode=null;
+let phase=null;
+let state="IDLE";
+
+/* ================= TIMER ================= */
+let timer=null;
+let eventTimer=null;
+let endTime=0;
+
+/* ================= TP ================= */
+let tpMin=5;
+
+const tpFailures=[
     "LEFT ENGINE FAILURE",
     "LEFT ENGINE FIRE",
     "RIGHT ENGINE FAILURE",
     "RIGHT ENGINE FIRE"
 ];
 
-const finalCalls = [
-    "RUNWAY IN SIGHT",
-    "200 CHECK",
-    "RUNWAY NOT IN SIGHT",
-    "NO RESPONSE",
+const tpCallouts=[
+    "STABLE CONTINUE",
     "UNSTABLE GO AROUND"
 ];
 
-// ===== 语音 =====
-function speak(text) {
-    const voices = speechSynthesis.getVoices();
+/* ================= XC ================= */
+const xcFailures=[
+    "LEFT ENGINE FAILURE",
+    "LEFT ENGINE FIRE",
+    "RIGHT ENGINE FAILURE",
+    "RIGHT ENGINE FIRE"
+];
 
-    let maleVoice = voices.find(v =>
-        v.name.toLowerCase().includes("male") ||
-        v.name.toLowerCase().includes("david") ||
-        v.name.toLowerCase().includes("mark") ||
-        v.name.toLowerCase().includes("alex") ||
-        v.name.toLowerCase().includes("daniel")
+const xcFinalCalls=[
+    "RUNWAY IN SIGHT",
+    "RUNWAY NOT IN SIGHT",
+    "TRAFFIC ON RUNWAY",
+    "200 CHECK",
+    "NO RESPONSE",
+    "GO AROUND"
+];
+
+/* ================= SETTINGS ================= */
+function setFontSize(v){
+    document.documentElement.style.setProperty('--font-size', v+'px');
+}
+
+function setButtonSize(v){
+    document.documentElement.style.setProperty('--button-size', v+'%');
+}
+
+function setBackground(input){
+
+    let file=input.files[0];
+    if(!file) return;
+
+    let reader=new FileReader();
+
+    reader.onload=function(e){
+        document.documentElement.style.setProperty(
+            '--bg-image',
+            `url(${e.target.result})`
+        );
+    };
+
+    reader.readAsDataURL(file);
+}
+
+/* ================= TP ================= */
+function setTP(v){
+    tpMin=parseInt(v);
+    document.getElementById("tpTimer").innerText=v+":00";
+}
+
+/* ================= START ================= */
+function start(m,p=null){
+
+    reset();
+
+    mode=m;
+    phase=p;
+    state="RUNNING";
+
+    let duration=getDuration(m,p);
+
+    endTime=Date.now()+duration;
+
+    startTimer();
+
+    if(m==="TP") scheduleTP(duration);
+    if(m==="XC") scheduleXC(duration,p);
+
+    if(m==="XC") go("xcSim");
+    else go("tp");
+}
+
+/* ================= DURATION ================= */
+function getDuration(m,p){
+
+    if(m==="TP") return tpMin*60000;
+
+    if(m==="XC"){
+        if(p==="takeoff") return 120000;
+        if(p==="cruise") return 300000;
+        if(p==="descent") return 180000;
+        if(p==="landing") return 120000;
+        if(p==="final") return 60000;
+    }
+
+    return 60000;
+}
+
+/* ================= TIMER ================= */
+function startTimer(){
+
+    clearInterval(timer);
+
+    timer=setInterval(()=>{
+
+        if(state!=="RUNNING") return;
+
+        let t=endTime-Date.now();
+        if(t<=0) return;
+
+        let m=Math.floor(t/60000);
+        let s=Math.floor((t%60000)/1000);
+
+        if(mode==="TP"){
+            document.getElementById("tpTimer").innerText=
+                String(m).padStart(2,'0')+":"+String(s).padStart(2,'0');
+        }
+
+        if(mode==="XC"){
+            document.getElementById("xcTimer").innerText=
+                String(m).padStart(2,'0')+":"+String(s).padStart(2,'0');
+        }
+
+    },500);
+}
+
+/* ================= TP ================= */
+function scheduleTP(duration){
+
+    setTimeout(()=>{
+
+        if(state!=="RUNNING"||mode!=="TP") return;
+
+        let f=tpFailures[Math.floor(Math.random()*tpFailures.length)];
+        document.getElementById("tpEvent").innerText=f;
+        speak(f);
+
+    },10000);
+
+    setTimeout(()=>{
+
+        if(state!=="RUNNING"||mode!=="TP") return;
+
+        let c=tpCallouts[Math.floor(Math.random()*tpCallouts.length)];
+        document.getElementById("tpEvent").innerText=c;
+        speak(c);
+
+    },duration-30000);
+}
+
+/* ================= XC ================= */
+function scheduleXC(duration,p){
+
+    setTimeout(()=>{
+
+        if(state!=="RUNNING"||mode!=="XC") return;
+
+        if(p!=="final"){
+
+            let f=xcFailures[Math.floor(Math.random()*xcFailures.length)];
+            document.getElementById("xcEvent").innerText=f;
+            speak(f);
+
+        }else{
+
+            let c=xcFinalCalls[Math.floor(Math.random()*xcFinalCalls.length)];
+            document.getElementById("xcEvent").innerText=c;
+            speak(c);
+        }
+
+    },10000);
+}
+
+/* ================= CONTROL ================= */
+function pause(){
+    if(state==="RUNNING"){
+        state="PAUSED";
+        clearInterval(timer);
+        clearTimeout(eventTimer);
+    }
+}
+
+function reset(){
+
+    state="IDLE";
+    mode=null;
+    phase=null;
+
+    clearInterval(timer);
+    clearTimeout(eventTimer);
+
+    document.getElementById("tpTimer").innerText="00:00";
+    document.getElementById("xcTimer").innerText="00:00";
+
+    document.getElementById("tpEvent").innerText="RESET";
+    document.getElementById("xcEvent").innerText="RESET";
+}
+
+/* ================= VOICE ================= */
+let maleVoice=null;
+
+function initVoice(){
+
+    let voices=speechSynthesis.getVoices();
+
+    maleVoice=voices.find(v=>
+        v.lang.includes("en") &&
+        (
+            v.name.toLowerCase().includes("david") ||
+            v.name.toLowerCase().includes("mark") ||
+            v.name.toLowerCase().includes("male")
+        )
     );
 
-    if (!maleVoice) maleVoice = voices[0];
-
-    const msg = new SpeechSynthesisUtterance(text);
-    msg.voice = maleVoice;
-    msg.rate = 0.95;
-    msg.pitch = 0.85;
-
-    speechSynthesis.speak(msg);
+    if(!maleVoice){
+        maleVoice=voices.find(v=>v.lang.includes("en"));
+    }
 }
 
-speechSynthesis.onvoiceschanged = () => {
-    speechSynthesis.getVoices();
+function speak(t){
+
+    let u=new SpeechSynthesisUtterance(t);
+
+    u.lang="en-US";
+    u.pitch=0.8;
+    u.rate=1.0;
+
+    if(maleVoice) u.voice=maleVoice;
+
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+}
+
+window.onload=()=>{
+    speechSynthesis.onvoiceschanged=initVoice;
+    initVoice();
 };
 
-// ===== 启动阶段 =====
-function startPhase(phase) {
-    hideAll();
-    currentPhase = phase;
-
-    document.getElementById("sim").style.display = "block";
-    document.getElementById("status").innerText = "Flying... Stay ready";
-
-    let duration;
-
-    if (phase === "takeoff" || phase === "landing") {
-        duration = Math.random() * 120000;
-    } else if (phase === "final") {
-        duration = Math.random() * 60000;
-    } else {
-        duration = Math.random() * 300000;
-    }
-
-    timer = setTimeout(() => triggerEvent(phase), duration);
-}
-
-// ===== 手动触发 =====
-function triggerNow() {
-    clearTimeout(timer); // ❗取消原本随机触发
-    triggerEvent(currentPhase);
-}
-
-// ===== 触发事件 =====
-function triggerEvent(phase) {
-    let event;
-
-    if (phase === "final") {
-        event = finalCalls[Math.floor(Math.random() * finalCalls.length)];
-        speak(event); // 不重复
-    } else {
-        event = failures[Math.floor(Math.random() * failures.length)];
-
-        let callout = event.toLowerCase();
-        callout = callout + ", " + callout;
-        speak(callout);
-    }
-
-    document.getElementById("status").innerText = "⚠️ " + event;
-
-    let time = new Date().toLocaleTimeString();
-    historyLog.unshift(`${time} | ${phase.toUpperCase()} | ${event}`);
-}
-
-// ===== 历史 =====
-function showHistory() {
-    hideAll();
-    document.getElementById("history").style.display = "block";
-
-    let box = document.getElementById("historyBox");
-    box.innerHTML = "";
-
-    if (historyLog.length === 0) {
-        box.innerHTML = "<p>No records</p>";
-        return;
-    }
-
-    historyLog.forEach(item => {
-        let p = document.createElement("p");
-        p.textContent = item;
-        box.appendChild(p);
-    });
-}
-
-function clearHistory() {
-    historyLog = [];
-    showHistory();
-}
-
-// ===== UI =====
-function goBack() {
-    clearTimeout(timer);
-    speechSynthesis.cancel();
-    hideAll();
-    document.getElementById("menu").style.display = "block";
-}
-
-function hideAll() {
-    document.getElementById("menu").style.display = "none";
-    document.getElementById("sim").style.display = "none";
-    document.getElementById("history").style.display = "none";
-}
 </script>
 
 </body>
